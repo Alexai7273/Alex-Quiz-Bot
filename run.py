@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-Advance Quiz Bot — Open Source Project
+""" Advance Quiz Bot — Open Source Project
 This project was originally developed by Gagan (github.com/devgaganin).
 Reference: https://t.me/advance_quiz_bot
 The codebase has been reviewed and verified with the assistance of Claude AI.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -37,34 +35,30 @@ def auto_install_dependencies():
     """Auto-install WeasyPrint system dependencies on Linux if missing."""
     if platform.system() != "Linux":
         return
-
     # Agar apt-get available nahi hai (jaise Heroku par), toh skip karein
     if not shutil.which("apt-get"):
         logger.info("apt-get not found. Skipping auto-install (Use Aptfile if on Heroku).")
         return
-
     # Check karein ki library pehle se installed hai ya nahi
     if ctypes.util.find_library("gobject-2.0") is not None:
         return  # Pehle se hai, kuch karne ki zaroorat nahi
-
     logger.warning("Missing system libraries for PDF/HTML generation. Auto-installing...")
-    
     libs = [
-        "libpango-1.0-0", "libpangocairo-1.0-0", "libcairo2",
-        "libgdk-pixbuf-2.0-0", "shared-mime-info", "libffi-dev"
+        "libpango-1.0-0",
+        "libpangocairo-1.0-0",
+        "libcairo2",
+        "libgdk-pixbuf-2.0-0",
+        "shared-mime-info",
+        "libffi-dev",
     ]
-
     try:
         # Check karein ki script root (sudo) par chal rahi hai ya normal user
         use_sudo = os.geteuid() != 0
         prefix = ["sudo"] if use_sudo else []
-
         logger.info("Running apt-get update...")
         subprocess.run(prefix + ["apt-get", "update", "-y"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
         logger.info("Installing PDF libraries...")
         subprocess.run(prefix + ["apt-get", "install", "-y"] + libs, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
         logger.info("✅ Libraries installed successfully!")
     except subprocess.CalledProcessError as e:
         logger.error(f"❌ Auto-install failed. Please run manually: sudo apt-get install -y {' '.join(libs)}")
@@ -75,21 +69,18 @@ def auto_install_dependencies():
 
 async def _run_creator_bot() -> None:
     from quizbot.creator_bot.bot import run_creator_bot
-
     logger.info("Starting Creator Bot (Pyrogram)...")
     await run_creator_bot()
 
 
 async def _run_runner_bot() -> None:
     from quizbot.runner_bot.bot import run_runner_bot
-
     logger.info("Starting Runner Bot (python-telegram-bot)...")
     await run_runner_bot()
 
 
 async def _run_mini_app() -> None:
     from quizbot.mini_app.server import run_mini_app_server
-
     logger.info("Starting Mini App server (FastAPI)...")
     await run_mini_app_server()
 
@@ -121,7 +112,7 @@ async def main(only: str | None) -> None:
             "Mini App listening on %s:%s (public URL: %s)",
             config.MINI_APP_HOST,
             config.MINI_APP_PORT,
-            config.MINI_APP_DOMAIN or "<not set -- attach a domain / set MINI_APP_DOMAIN>",
+            config.MINI_APP_DOMAIN or "",
         )
     elif want_mini_app:
         if config.MINI_APP_DOMAIN:
@@ -178,15 +169,15 @@ async def main(only: str | None) -> None:
 if __name__ == "__main__":
     # Start hone se pehle libraries check karein aur install karein
     auto_install_dependencies()
-
     parser = argparse.ArgumentParser(description="Run the Advance Quiz Bot platform.")
     parser.add_argument(
-        "--only", choices=["creator", "runner", "miniapp"], default=None,
+        "--only",
+        choices=["creator", "runner", "miniapp"],
+        default=None,
         help="Run only one component (default: run both bots, plus the "
              "Mini App server too if MINI_APP_DOMAIN is configured).",
     )
     args = parser.parse_args()
-
     try:
         asyncio.run(main(args.only))
     except KeyboardInterrupt:
