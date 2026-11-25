@@ -321,7 +321,7 @@ def _build_answer_key_html(answer_key: list[tuple[int, str]]) -> str:
     cells = "".join(f'<span class="ak-cell"><b>{num}.</b> {ans}</span>' for num, ans in answer_key)
     return (
         f'<div class="answer-key-page">'
-        f'<div class="answer-key-title">\U0001F511 ANSWER KEY</div>'
+        f'<div class="answer-key-title">\U0001F511 Answer Key</div>'
         f'<div class="answer-key-grid">{cells}</div>'
         f'<div class="answer-key-note">Ye answers aapke practice ke liye hain.</div>'
         f'</div>'
@@ -341,7 +341,7 @@ def _build_solutions_html(solutions: list[dict]) -> str:
                     opts_lines.append(
                         f'<div class="sol-opt sol-opt-correct">'
                         f'<span class="sol-opt-letter">{opt["letter"]})</span> {opt["text"]} '
-                        f'<span class="sol-correct-tag">\u2714 CORRECT</span></div>'
+                        f'<span class="sol-correct-tag">\u2714 Correct</span></div>'
                     )
                 else:
                     opts_lines.append(
@@ -362,405 +362,64 @@ def _build_solutions_html(solutions: list[dict]) -> str:
 
         blocks.append(
             f'<div class="sol-item">'
-            f'<div class="sol-question"><span class="sol-num">{sol["num"]}</span> {sol["question"]}</div>'
+            f'<div class="sol-question"><span class="sol-num">{sol["num"]}.</span> {sol["question"]}</div>'
             f'{opts_wrapper}{answer_banner}{expl_block}{ref_block}'
             f'</div>'
         )
     return (
         f'<div class="solutions-page">'
-        f'<div class="solutions-title">\U0001F4D8 DETAILED SOLUTIONS</div>'
+        f'<div class="solutions-title">\U0001F4D8 Detailed Solutions</div>'
         f'<div class="solutions-container">{"".join(blocks)}</div>'
         f'</div>'
     )
 
 
 # ══════════════════════════════════════════════════════════════════════
-# PREMIUM CSS — NAVY + GOLD THEME
+# CSS
 # ══════════════════════════════════════════════════════════════════════
 
 _CLASSIC_CSS = """
-@page {
-  size: A4;
-  margin: 1.3cm 1.2cm 1.6cm 1.2cm;
-  @bottom-center {
-    content: "Page " counter(page) " of " counter(pages);
-    font-family: 'Noto Sans', sans-serif;
-    font-size: 7.5pt;
-    color: #94a3b8;
-    letter-spacing: 0.6pt;
-  }
-  @top-right {
-    content: "ALEX QUIZ BOT";
-    font-family: 'Merriweather', serif;
-    font-size: 7.5pt;
-    color: #c9a227;
-    letter-spacing: 2pt;
-    font-weight: 700;
-  }
-}
-
-* { box-sizing: border-box; }
-
-body {
-  font-family: 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
-  color: #1e293b;
-  line-height: 1.5;
-  font-size: 9pt;
-  background-color: #ffffff;
-  margin: 0;
-  padding: 0;
-}
-
-/* ═══════════ PREMIUM HEADER BANNER ═══════════ */
-.report-header {
-  background: linear-gradient(135deg, #0b1120 0%, #1e293b 100%);
-  padding: 24pt 22pt 20pt 22pt;
-  border-radius: 8pt;
-  margin-bottom: 16pt;
-  position: relative;
-  overflow: hidden;
-  border: 1pt solid #c9a227;
-  text-align: center;
-}
-.report-header::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3pt;
-  background: linear-gradient(90deg, #c9a227 0%, #f5e6b8 50%, #c9a227 100%);
-  border-radius: 8pt 8pt 0 0;
-}
-.report-subtitle {
-  color: #c9a227;
-  font-size: 8pt;
-  letter-spacing: 3.5pt;
-  text-transform: uppercase;
-  font-weight: 700;
-  margin-bottom: 6pt;
-}
-.report-title {
-  font-family: 'Merriweather', serif;
-  font-size: 19pt;
-  color: #ffffff;
-  margin: 0 0 10pt 0;
-  letter-spacing: -0.3pt;
-  line-height: 1.25;
-  font-weight: 700;
-}
-.report-meta-row {
-  color: #cbd5e1;
-  font-size: 8.5pt;
-  margin: 8pt 0 10pt 0;
-  letter-spacing: 0.3pt;
-}
-.report-meta-row b {
-  color: #f5e6b8;
-  font-weight: 800;
-  font-size: 10.5pt;
-  margin-right: 3pt;
-}
-.report-meta-row .sep {
-  color: #c9a227;
-  margin: 0 9pt;
-  opacity: 0.55;
-}
-.creator-line {
-  font-size: 8pt;
-  color: #94a3b8;
-  margin-top: 10pt;
-  padding-top: 10pt;
-  border-top: 0.5pt solid rgba(201, 162, 39, 0.35);
-  letter-spacing: 0.3pt;
-}
-.creator-line b {
-  color: #f5e6b8;
-  font-weight: 700;
-  letter-spacing: 0.5pt;
-}
-
-/* ═══════════ QUESTIONS PAGE ═══════════ */
-.questions-container {
-  column-count: 2;
-  column-gap: 14pt;
-  column-rule: 0.5pt solid #e2e8f0;
-}
-
-.section-banner {
-  column-span: all;
-  background: linear-gradient(90deg, #0b1120 0%, #1e293b 100%);
-  color: #f5e6b8;
-  padding: 8pt 14pt;
-  font-family: 'Merriweather', serif;
-  font-weight: 700;
-  font-size: 10.5pt;
-  margin: 14pt 0 10pt 0;
-  border-radius: 4pt;
-  letter-spacing: 1pt;
-  page-break-after: avoid;
-  border-left: 4pt solid #c9a227;
-}
-
-.qs-item {
-  margin-bottom: 9pt;
-  padding: 8pt 10pt 7pt 10pt;
-  background: #ffffff;
-  border: 0.5pt solid #e2e8f0;
-  border-left: 3pt solid #c9a227;
-  border-radius: 3pt;
-  page-break-inside: avoid;
-  break-inside: avoid;
-  box-shadow: 0 1pt 2pt rgba(15, 23, 42, 0.03);
-}
-.qs-item-note {
-  border-left-color: #94a3b8;
-  background: #fafafa;
-}
-.qs-question {
-  font-weight: 600;
-  color: #0b1120;
-  font-size: 8.8pt;
-  line-height: 1.45;
-  margin-bottom: 4pt;
-  text-align: justify;
-}
-.qs-num {
-  display: inline-block;
-  min-width: 15pt;
-  color: #c9a227;
-  font-weight: 800;
-  margin-right: 3pt;
-}
-.qs-options {
-  font-size: 8.3pt;
-  color: #334155;
-  line-height: 1.5;
-  display: grid;
-  column-gap: 10pt;
-  row-gap: 3pt;
-  margin-top: 5pt;
-}
+@page { size: A4; margin: 1.2cm 1.2cm 1.5cm 1.2cm; @bottom-center { content: "Page " counter(page); font-family: 'Noto Sans', sans-serif; font-size: 8pt; color: #64748b; } }
+body { font-family: 'Noto Sans', 'Noto Sans Devanagari', sans-serif; color: #1e293b; line-height: 1.4; font-size: 9pt; background-color: #fff; }
+.report-header { text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 14px; }
+.report-title { font-family: 'Merriweather', serif; font-size: 16pt; color: #1e3a8a; margin: 0 0 4px 0; }
+.creator-line { font-size: 9pt; color: #4338ca; font-weight: 600; letter-spacing: 0.3px; margin-top: 2px; }
+.creator-line b { color: #1e3a8a; }
+.section-banner { column-span: all; background: linear-gradient(90deg, #1e3a8a, #2563eb); color: white; padding: 6px 12px; font-weight: bold; font-size: 10pt; margin: 12px 0 8px 0; border-radius: 4px; letter-spacing: 0.3px; page-break-after: avoid; }
+.questions-container { column-count: 2; column-gap: 18px; column-rule: 1px solid #e2e8f0; }
+.qs-item { margin-bottom: 9px; padding-bottom: 7px; border-bottom: 1px dotted #e2e8f0; page-break-inside: avoid; break-inside: avoid; }
+.qs-question { font-weight: 600; color: #1e293b; font-size: 9pt; line-height: 1.4; margin-bottom: 3px; text-align: justify; }
+.qs-num { color: #1e3a8a; font-weight: 700; margin-right: 3px; }
+.qs-options { font-size: 8.5pt; color: #334155; line-height: 1.45; display: grid; column-gap: 10px; row-gap: 4px; margin-top: 5px; }
 .opt-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .opt-grid-2 { grid-template-columns: repeat(2, 1fr); }
 .opt-grid-1 { grid-template-columns: 1fr; }
-.opt-item {
-  display: block;
-  word-break: break-word;
-  padding: 1pt 0;
-}
-
-/* ═══════════ ANSWER KEY PAGE ═══════════ */
-.answer-key-page {
-  page-break-before: always;
-  margin-top: 10pt;
-}
-.answer-key-title {
-  text-align: center;
-  background: linear-gradient(135deg, #0b1120 0%, #1e293b 100%);
-  color: #f5e6b8;
-  padding: 14pt 20pt;
-  font-family: 'Merriweather', serif;
-  font-weight: 700;
-  font-size: 16pt;
-  border-radius: 6pt;
-  margin-bottom: 20pt;
-  letter-spacing: 2pt;
-  border: 1pt solid #c9a227;
-  position: relative;
-}
-.answer-key-title::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2.5pt;
-  background: linear-gradient(90deg, #c9a227 0%, #f5e6b8 50%, #c9a227 100%);
-  border-radius: 6pt 6pt 0 0;
-}
-.answer-key-grid {
-  column-count: 5;
-  column-gap: 10pt;
-  font-size: 10pt;
-}
-.ak-cell {
-  display: block;
-  padding: 5pt 8pt;
-  margin-bottom: 5pt;
-  background: linear-gradient(135deg, #fef9e7 0%, #fffbeb 100%);
-  border-left: 2.5pt solid #c9a227;
-  border-radius: 3pt;
-  break-inside: avoid;
-  font-weight: 500;
-  color: #1e293b;
-  font-size: 9.5pt;
-}
-.ak-cell b {
-  color: #0b1120;
-  font-weight: 800;
-  margin-right: 3pt;
-}
-.answer-key-note {
-  text-align: center;
-  margin-top: 20pt;
-  font-size: 8.5pt;
-  color: #64748b;
-  font-style: italic;
-  padding-top: 10pt;
-  border-top: 0.5pt dashed #cbd5e1;
-}
-
-/* ═══════════ SOLUTIONS PAGE ═══════════ */
-.solutions-page {
-  page-break-before: always;
-  margin-top: 10pt;
-}
-.solutions-title {
-  text-align: center;
-  background: linear-gradient(135deg, #0b1120 0%, #1e293b 100%);
-  color: #f5e6b8;
-  padding: 14pt 20pt;
-  font-family: 'Merriweather', serif;
-  font-weight: 700;
-  font-size: 16pt;
-  border-radius: 6pt;
-  margin-bottom: 20pt;
-  letter-spacing: 2pt;
-  border: 1pt solid #c9a227;
-  position: relative;
-}
-.solutions-title::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2.5pt;
-  background: linear-gradient(90deg, #c9a227 0%, #f5e6b8 50%, #c9a227 100%);
-  border-radius: 6pt 6pt 0 0;
-}
-.solutions-container {
-  column-count: 2;
-  column-gap: 16pt;
-}
-.sol-item {
-  margin-bottom: 11pt;
-  padding: 10pt 11pt;
-  border: 0.5pt solid #e2e8f0;
-  border-left: 3pt solid #c9a227;
-  border-radius: 4pt;
-  background: #fcfcf8;
-  page-break-inside: avoid;
-  break-inside: avoid;
-  box-shadow: 0 1pt 2pt rgba(15, 23, 42, 0.03);
-}
-.sol-question {
-  font-weight: 700;
-  color: #0b1120;
-  font-size: 8.8pt;
-  line-height: 1.45;
-  margin-bottom: 7pt;
-}
-.sol-num {
-  display: inline-block;
-  min-width: 14pt;
-  background: #0b1120;
-  color: #f5e6b8;
-  padding: 1.5pt 5pt;
-  border-radius: 3pt;
-  font-weight: 800;
-  margin-right: 5pt;
-  font-size: 8pt;
-  text-align: center;
-}
-.sol-options { margin-bottom: 6pt; }
-.sol-opt {
-  font-size: 8.2pt;
-  color: #475569;
-  padding: 3pt 7pt;
-  margin-bottom: 2.5pt;
-  border-radius: 3pt;
-  line-height: 1.4;
-  background: #ffffff;
-  border: 0.3pt solid #e2e8f0;
-}
-.sol-opt-letter {
-  font-weight: 800;
-  color: #64748b;
-  margin-right: 4pt;
-}
-.sol-opt-correct {
-  background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%);
-  color: #14532d;
-  font-weight: 600;
-  border: 0.5pt solid #16a34a;
-  border-left: 2.5pt solid #16a34a;
-}
+.opt-item { display: block; word-break: break-word; }
+.answer-key-page { page-break-before: always; margin-top: 10px; }
+.answer-key-title { text-align: center; background: linear-gradient(90deg, #1e3a8a, #2563eb); color: white; padding: 8px 12px; font-weight: bold; font-size: 13pt; border-radius: 4px; margin-bottom: 14px; letter-spacing: 1px; }
+.answer-key-grid { column-count: 6; column-gap: 10px; font-size: 10pt; }
+.ak-cell { display: block; padding: 3px 6px; margin-bottom: 4px; background: #f1f5f9; border-left: 2px solid #1e3a8a; border-radius: 2px; break-inside: avoid; }
+.ak-cell b { color: #1e3a8a; }
+.answer-key-note { text-align: center; margin-top: 16px; font-size: 8.5pt; color: #64748b; font-style: italic; }
+.solutions-page { page-break-before: always; margin-top: 10px; }
+.solutions-title { text-align: center; background: linear-gradient(90deg, #1e3a8a, #2563eb); color: white; padding: 8px 12px; font-weight: bold; font-size: 13pt; border-radius: 4px; margin-bottom: 14px; letter-spacing: 1px; }
+.solutions-container { column-count: 2; column-gap: 18px; }
+.sol-item { margin-bottom: 10px; padding: 8px; border: 1px solid #cbd5e1; border-left: 3px solid #1e3a8a; border-radius: 4px; background: #fff; page-break-inside: avoid; break-inside: avoid; }
+.sol-question { font-weight: 600; color: #1e293b; font-size: 9pt; line-height: 1.4; margin-bottom: 5px; }
+.sol-num { color: #1e3a8a; font-weight: 700; margin-right: 3px; }
+.sol-options { margin-bottom: 5px; }
+.sol-opt { font-size: 8.5pt; color: #475569; padding: 2px 4px; margin-bottom: 2px; border-radius: 3px; line-height: 1.35; }
+.sol-opt-letter { font-weight: 700; color: #64748b; margin-right: 4px; }
+.sol-opt-correct { background: #dcfce7; color: #14532d; font-weight: 600; border-left: 3px solid #16a34a; }
 .sol-opt-correct .sol-opt-letter { color: #16a34a; }
-.sol-correct-tag {
-  color: #16a34a;
-  font-size: 6.8pt;
-  font-weight: 800;
-  margin-left: 4pt;
-  letter-spacing: 0.4pt;
-}
-.sol-answer {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 0.5pt solid #86efac;
-  border-left: 3pt solid #16a34a;
-  padding: 6pt 10pt;
-  border-radius: 4pt;
-  font-size: 8.8pt;
-  color: #14532d;
-  margin-bottom: 5pt;
-  font-weight: 500;
-}
-.sol-answer-letter {
-  color: #16a34a;
-  font-weight: 800;
-  font-size: 10pt;
-  letter-spacing: 1.2pt;
-}
-.sol-explanation {
-  background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
-  border-left: 2.5pt solid #d97706;
-  padding: 6pt 10pt;
-  font-size: 8.3pt;
-  color: #78350f;
-  border-radius: 0 3pt 3pt 0;
-  margin-bottom: 5pt;
-  line-height: 1.5;
-}
-.sol-reference {
-  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
-  border-left: 2.5pt solid #2563eb;
-  padding: 5pt 10pt;
-  font-size: 7.8pt;
-  color: #1e3a8a;
-  border-radius: 0 3pt 3pt 0;
-  margin-bottom: 3pt;
-  line-height: 1.45;
-}
-
-/* ═══════════ MISC ═══════════ */
-math { font-size: 9pt; }
-math[display="block"] { display: block; margin: 4pt auto; text-align: center; }
-
-.footer-info {
-  text-align: center;
-  font-size: 7.5pt;
-  color: #94a3b8;
-  margin-top: 24pt;
-  padding-top: 12pt;
-  border-top: 1pt solid #c9a227;
-  letter-spacing: 0.5pt;
-  line-height: 1.7;
-}
-.footer-info .creator-tag {
-  color: #0b1120;
-  font-weight: 700;
-  letter-spacing: 0.3pt;
-  background: linear-gradient(90deg, transparent, #fef3c7, transparent);
-  padding: 2pt 14pt;
-  display: inline-block;
-  margin-top: 4pt;
-  font-size: 8pt;
-}
+.sol-correct-tag { color: #16a34a; font-size: 7.5pt; font-weight: 700; margin-left: 4px; }
+.sol-answer { background: #f0fdf4; border: 1px solid #86efac; padding: 4px 8px; border-radius: 4px; font-size: 9pt; color: #14532d; margin-bottom: 4px; }
+.sol-answer-letter { color: #16a34a; font-weight: 800; font-size: 10pt; }
+.sol-explanation { background: #fef9c3; border-left: 2px solid #d97706; padding: 5px 8px; font-size: 8.5pt; color: #78350f; border-radius: 0 3px 3px 0; margin-bottom: 4px; line-height: 1.4; }
+.sol-reference { background: #eff6ff; border-left: 2px solid #2563eb; padding: 4px 8px; font-size: 8pt; color: #1e3a8a; border-radius: 0 3px 3px 0; margin-bottom: 3px; line-height: 1.35; }
+math { font-size: 9pt; } math[display="block"] { display: block; margin: 4px auto; text-align: center; }
+.footer-info { text-align: center; font-size: 7pt; color: #94a3b8; margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+.footer-info .creator-tag { color: #4338ca; font-weight: 600; }
 """
 
 _MODERN_CSS = _CLASSIC_CSS
@@ -803,43 +462,20 @@ def render_quiz_pdf(
     css = _CLASSIC_CSS
     logger.info("🖨️  HTML built — rendering to PDF with WeasyPrint…")
 
-    # ── Premium header stats ──
-    n_questions = len(solutions)
-    n_sections = len(sections) if sections else 0
-    n_answered = len(answer_key)
-
     watermark_div = '<div class="watermark-circle"></div>' if bg_image_b64 else ""
     creator_line_html = f'<div class="creator-line">✍️ <b>{_escape_html(CREATOR_LINE)}</b></div>'
 
-    meta_row = (
-        f'<div class="report-meta-row">'
-        f'<b>{n_questions}</b> Questions'
-        f'<span class="sep">|</span>'
-        f'<b>{n_sections if n_sections else "—"}</b> Sections'
-        f'<span class="sep">|</span>'
-        f'<b>{n_answered}</b> With Answers'
-        f'</div>'
-    )
-
     html_content = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Merriweather:wght@700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Merriweather:wght@700&display=swap" rel="stylesheet">
 <style>{css}{bg_css}</style></head>
 <body>
 {watermark_div}
-<div class="report-header">
-  <div class="report-subtitle">Quiz Practice Sheet</div>
-  <h1 class="report-title">{_escape_html(quiz_name or "Quiz Practice Sheet")}</h1>
-  {meta_row}
-  {creator_line_html}
-</div>
+<div class="report-header"><h1 class="report-title">{_escape_html(quiz_name or "Quiz Practice Sheet")}</h1>{creator_line_html}</div>
 <div class="questions-container">{questions_html}</div>
 {answer_key_html}
 {solutions_html}
-<div class="footer-info">
-  Generated by Alex Quiz Bot &bull; Practice Sheet<br/>
-  <span class="creator-tag">✍️ {_escape_html(CREATOR_LINE)}</span>
-</div>
+<div class="footer-info">Generated by Quiz Bot &bull; Practice Sheet<br/><span class="creator-tag">✍️ {_escape_html(CREATOR_LINE)}</span></div>
 </body></html>"""
 
     try:
@@ -852,7 +488,7 @@ def render_quiz_pdf(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# NOTES RENDERER (2-COLUMN NEWSPAPER STYLE) — UNCHANGED
+# NOTES RENDERER (2-COLUMN NEWSPAPER STYLE)
 # ══════════════════════════════════════════════════════════════════════
 
 _NOTES_SEP_RE = re.compile(r"^\s*[=\-*_~]{4,}\s*$")
