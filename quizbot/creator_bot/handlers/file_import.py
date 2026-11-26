@@ -1,199 +1,147 @@
-"""
-Advance Quiz Bot — Open Source Project
-This project was originally developed by Gagan (github.com/devgaganin).
-Reference: https://t.me/advance_quiz_bot
-The codebase has been reviewed and verified with the assistance of Claude AI.
-"""
+import asyncio
+import os
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from pyrogram.errors import FloodWait
 
-from __future__ import annotations
+# अपने प्रोजेक्ट के हिसाब से इसे इम्पोर्ट करें (अगर रास्ता अलग है तो बदल लें)
+from ..file_import import process_uploaded_file
 
-import json
-import logging
-from typing import Optional
+# डेटा सेव करने के लिए डिक्शनरी (यूजर आईडी के हिसाब से)
+user_queues = {}      # फाइलों को कतार में लगाने के लिए
+user_tasks = {}       # 5 सेकंड का टाइमर सेट करने के लिए
+user_states = {}      # चेक करने के लिए कि यूजर ने कमांड चलाया है या नहीं
 
-from ..parsing import filter_words, parse_question_block, strip_source_noise
+# ==========================================
+# 1. /txt2set कमांड हैंडलर
+# ==========================================
+@Client.on_message(filters.command("txt2set") & filters.private)
+async def txt2set_command(client: Client, message: Message):
+    user_id = message.from_user.id
+    
+    # स्टेट को इनिशियलाइज करें
+    user_states[user_id] = "waiting_for_files"
+    user_queues[user_id] = []
+    
+    await message.reply_text(
+        "📁 **कृपया .txt फाइलें भेजें।**\n\n"
+        "आप एक साथ 10, 20 या जितनी चाहें फाइलें भेज सकते हैं।\n"
+        "फाइलें भेजने के **5 सेकंड** बाद बॉट अपने आप सभी फाइलों को एक-एक करके PDF और HTML में बदल देगा।"
+    )
 
-logger = logging.getLogger(__name__)
+# ==========================================
+# 2. फाइल रिसीव करने वाला हैंडलर
+# ==========================================
+@Client.on_message(filters.document & filters.private)
+async def receive_txt_files(client: Client, message: Message):
+    user_id = message.from_user.id
+    
+    # चेक करें कि यूजर ने /txt2set कमांड चलाया है या नहीं
+    if user_states.get(user_id) != "waiting_for_files":
+        return
+        
+    file_name = message.document.file_name or ""
+    if not file_name.endswith(".txt"):
+        return
+        
+    # फाइल को क्यू (Queue) में जोड़ें
+    user_queues[user_id].append(message)
+    total_files = len(user_queues[user_id])
+    
+    # अगर पहले से कोई टाइमर चल रहा है, तो उसे रीसेट करें
+    if user_id in user_tasks and not user_tasks[user_id].done():
+        user_tasks[user_id].cancel()
+        
+    # 5 सेकंड का नया टाइमर सेट करें (ताकि यूजर को और फाइलें भेजने का टाइम मिले)
+    user_tasks[user_id] = asyncio.create_task(start_processing_after_delay(client, user_id, total_files))
 
-
-def _process_txt(content: str, remove_words: list[str], out_questions: list[dict]) -> int:
-    """Parse a .txt upload using the same block-parsing engine as pasted
-    text, plus the legacy `RT:`/`ID:`/`<ggn>...</ggn>` structured-field
-    style for reply_text/file_id metadata."""
-    ggn_blocks: list[str] = []
-
-    def _replace_ggn(match) -> str:
-        placeholder = f"GGN_PLACEHOLDER_{len(ggn_blocks)}"
-        ggn_blocks.append(match.group(1))
-        return f"RT: <ggn>{placeholder}</ggn>"
-
-    import re
-
-    protected = re.sub(r"<ggn>(.*?)</ggn>", _replace_ggn, content, flags=re.DOTALL)
-
-    blocks = protected.strip().split("\n\n")
-    processed = 0
-
-    for block in blocks:
-        if not block.strip():
-            continue
-        lines = block.strip().split("\n")
-        has_structured = any(ln.strip().startswith(("RT:", "ID:")) for ln in lines)
-
-        reply_text: Optional[str] = None
-        file_id: Optional[str] = None
-        core_lines = lines
-
-        if has_structured:
-            reply_text, file_id, core_lines = None, None, []
-            for ln in lines:
-                stripped = ln.strip()
-                if stripped.startswith("RT:"):
-                    rt_content = stripped[3:].strip()
-                    ph_match = re.search(r"<ggn>GGN_PLACEHOLDER_(\d+)</ggn>", rt_content)
-                    if ph_match:
-                        idx = int(ph_match.group(1))
-                        reply_text = ggn_blocks[idx] if idx < len(ggn_blocks) else rt_content
-                    else:
-                        reply_text = rt_content
-                    if remove_words:
-                        reply_text = filter_words(reply_text, remove_words)
-                    reply_text = strip_source_noise(reply_text)
-                elif stripped.startswith("ID:"):
-                    file_id = strip_source_noise(stripped[3:].strip())
-                else:
-                    core_lines.append(ln)
-
-        parsed = parse_question_block("\n".join(core_lines))
-        if not parsed or isinstance(parsed["correct_option_id"], list):
-            continue
-
-        q_text = parsed["question"]
-        opts = parsed["options"]
-        exp = parsed.get("explanation")
-        if remove_words:
-            q_text = filter_words(q_text, remove_words)
-            opts = [filter_words(o, remove_words) for o in opts]
-            if exp:
-                exp = filter_words(exp, remove_words)
-        q_text = strip_source_noise(q_text)
-        opts = [strip_source_noise(o) for o in opts]
-        if exp:
-            exp = strip_source_noise(exp)
-
-        if not q_text or len(opts) < 2:
-            continue
-
-        out_questions.append(
-            {
-                "question": q_text, "options": opts,
-                "correct_option_id": parsed["correct_option_id"],
-                "explanation": exp, "reply_text": reply_text, "file_id": file_id,
-            }
-        )
-        processed += 1
-
-    return processed
-
-
-def _process_json(raw: dict, remove_words: list[str], out_questions: list[dict]) -> int:
-    """Parse the simple JSON schema:
-    `{"questions": [{"question_text", "options": [{"id","text"}],
-    "correct_option_id", "explanation"?, "reference_text"?, "file_id"?}]}`
-    """
-    questions = raw.get("questions")
-    if not isinstance(questions, list):
-        raise ValueError("'questions' should be an array.")
-
-    processed = 0
-    for q in questions:
+# ==========================================
+# 3. ऑटोमैटिक प्रोसेसिंग शुरू करने वाला फंक्शन
+# ==========================================
+async def start_processing_after_delay(client: Client, user_id: int, total_files: int):
+    try:
+        await asyncio.sleep(5) # 5 सेकंड रुकें ताकि सारी फाइलें आ जाएं
+    except asyncio.CancelledError:
+        return # अगर इस बीच नई फाइल आई, तो वापस जाएं
+        
+    files_to_process = user_queues.get(user_id, [])
+    if not files_to_process:
+        return
+        
+    # स्टेट बदल दें ताकि नई फाइलें गलती से क्यू में न जुड़ें
+    user_states[user_id] = "processing"
+    
+    status_msg = await client.send_message(
+        user_id, 
+        f"⏳ कुल **{len(files_to_process)}** फाइलें मिली हैं। प्रोसेसिंग शुरू हो रही है...\n"
+        f"*(इसमें थोड़ा समय लग सकता है, कृपया इंतज़ार करें)*"
+    )
+    
+    # एक-एक करके सारी फाइलें प्रोसेस करें
+    for index, msg in enumerate(files_to_process, start=1):
+        file_name = msg.document.file_name
+        
         try:
-            if not isinstance(q, dict):
-                continue
-            if not all(k in q for k in ("question_text", "options", "correct_option_id")):
-                continue
-            question_text = q["question_text"]
-            if remove_words:
-                question_text = filter_words(question_text, remove_words)
-            question_text = strip_source_noise(question_text)
-
-            options_data = q["options"]
-            if not isinstance(options_data, list) or len(options_data) < 2:
-                continue
-
-            options: list[str] = []
-            id_to_index: dict = {}
-            for opt in options_data:
-                if not isinstance(opt, dict) or "id" not in opt or "text" not in opt:
-                    continue
-                text = opt["text"]
-                if remove_words:
-                    text = filter_words(text, remove_words)
-                text = strip_source_noise(text)
-                if not text:
-                    continue
-                id_to_index[opt["id"]] = len(options)
-                options.append(text)
-            if len(options) < 2:
-                continue
-
-            correct_id = q["correct_option_id"]
-            if correct_id not in id_to_index:
-                continue
-            correct_index = id_to_index[correct_id]
-
-            explanation = q.get("explanation")
-            if explanation and remove_words:
-                explanation = filter_words(explanation, remove_words)
-            if explanation:
-                explanation = strip_source_noise(explanation)
-
-            reply_text = q.get("reference_text")
-            if reply_text and remove_words:
-                reply_text = filter_words(reply_text, remove_words)
-            if reply_text:
-                reply_text = strip_source_noise(reply_text)
-
-            out_questions.append(
-                {
-                    "question": question_text, "options": options,
-                    "correct_option_id": correct_index, "explanation": explanation,
-                    "reply_text": reply_text, "file_id": q.get("file_id"),
-                }
+            await status_msg.edit_text(
+                f"⏳ **प्रोसेसिंग ({index}/{len(files_to_process)}):**\n"
+                f"📄 `{file_name}`\n\n"
+                f"कृपया प्रतीक्षा करें..."
             )
-            processed += 1
-        except Exception:
-            logger.debug("Skipped malformed question in JSON import", exc_info=True)
-            continue
-    return processed
-
-
-def process_uploaded_file(
-    content: bytes, filename: str, out_questions: list[dict], remove_words: list[str]
-) -> tuple[Optional[int], Optional[str]]:
-    """Parse an uploaded .txt or .json quiz-question file (bytes already in
-    memory) and append parsed questions to `out_questions` in place.
-    Returns (count_processed, error_message).
-    """
-    lower = filename.lower()
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        return None, "❌ File is not valid UTF-8 text."
-
-    try:
-        if lower.endswith(".json"):
-            data = json.loads(text)
-            if not isinstance(data, dict) or "questions" not in data:
-                return None, "❌ Invalid JSON format. Expected an object with a 'questions' array."
-            count = _process_json(data, remove_words, out_questions)
-        elif lower.endswith(".txt"):
-            count = _process_txt(text, remove_words, out_questions)
-        else:
-            return None, "❌ Only .txt and .json files are supported."
-        return count, None
-    except json.JSONDecodeError as exc:
-        return None, f"❌ Invalid JSON format: {exc}"
-    except Exception as exc:
-        logger.exception("process_uploaded_file failed for %s", filename)
-        return None, f"⚠️ Error processing file: {exc}"
+            
+            # फाइल डाउनलोड करें
+            file_path = await msg.download()
+            
+            with open(file_path, "rb") as f:
+                content = f.read()
+                
+            out_questions = []
+            # आपका file_import.py का फंक्शन
+            count, error = process_uploaded_file(content, file_name, out_questions, [])
+            
+            if error or count == 0:
+                await client.send_message(user_id, f"❌ `{file_name}` में कोई सवाल नहीं मिले या एरर आया:\n{error}")
+                os.remove(file_path) # डाउनलोड की गई फाइल डिलीट करें
+                continue
+                
+            # -------------------------------------------------------------
+            # ⚠️ यहाँ आप अपना PDF और HTML जेनरेट करने वाला कोड लगाएं
+            # -------------------------------------------------------------
+            # नीचे दिए गए हिस्से को अपने बॉट के हिसाब से बदलें:
+            
+            # pdf_file = generate_pdf(out_questions) 
+            # html_file = generate_html(out_questions)
+            
+            # await message.reply_document(pdf_file, caption=f"PDF Generated!\nQuestions: {count}")
+            # await message.reply_document(html_file, caption=f"HTML Generated!\nQuestions: {count}")
+            
+            # -------------------------------------------------------------
+            # फिलहाल के लिए यह मैसेज भेजेगा (जब तक आप ऊपर वाला कोड नहीं लगाते)
+            await client.send_message(
+                user_id,
+                f"✅ **PDF और HTML तैयार!**\n"
+                f"📄 फाइल: `{file_name}`\n"
+                f"❓ कुल सवाल: {count}\n\n"
+                f"*(नोट: यहाँ आपकी बनी हुई असली PDF और HTML फाइलें भेजी जानी चाहिए)*"
+            )
+            
+            # डाउनलोड की गई अस्थायी फाइल डिलीट करें
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            
+        except FloodWait as e:
+            # अगर टेलीग्राम लिमिट आ जाए तो रुकें
+            await asyncio.sleep(e.value)
+            await client.send_message(user_id, f"⚠️ टेलीग्राम लिमिट के कारण {e.value} सेकंड रुकना पड़ा।")
+        except Exception as e:
+            await client.send_message(user_id, f"⚠️ `{file_name}` प्रोसेस करने में एरर: {str(e)}")
+            
+        # हर फाइल के बाद 2 सेकंड का गैप दें ताकि अकाउंट स्पैम में न जाए
+        await asyncio.sleep(2) 
+        
+    # काम खत्म होने के बाद सफाई करें
+    await status_msg.edit_text("🎉 **सभी फाइलों का प्रोसेसिंग पूरा हो गया!**")
+    
+    # डिक्शनरी से डेटा हटा दें ताकि मेमोरी खाली हो जाए
+    if user_id in user_queues: del user_queues[user_id]
+    if user_id in user_states: del user_states[user_id]
+    if user_id in user_tasks: del user_tasks[user_id]
