@@ -12,7 +12,6 @@ import logging
 import os
 import tempfile
 import time
-import re
 from functools import partial
 from io import BytesIO
 
@@ -39,10 +38,6 @@ pending_txt_actions = {}
 # NEW: Batch processing variables
 batch_files = {}  # uid -> list of (doc, message) tuples
 batch_tasks = {}  # uid -> asyncio.Task
-
-# NEW: /txt command state
-txt_step_state = {}  # uid -> "WAITING_SOURCE" | "WAITING_KEY"
-txt_step_data = {}   # uid -> list of dicts [{"question": str, "options": [str]}]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -432,6 +427,7 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
         remove_words = user.get("remove_words", [])
         questions: list = []
 
+        # Try to parse as quiz; if it fails, gracefully fall back to notes
         try:
             _count, error = process_uploaded_file(content, _doc_fname(doc), questions, remove_words)
         except Exception as e:
@@ -455,13 +451,14 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
         use_ai = (action == "aiset")
         ai_solutions: dict = {}
 
+        # ---- PDF ----
         if action in ("pdf", "set", "aiset"):
             progress_cb = None
 
             if use_ai:
                 loop = asyncio.get_running_loop()
                 _throttle = {"last": 0.0}
-                MIN_INTERVAL = 3.0
+                MIN_INTERVAL = 3.0  # seconds — Telegram edit-rate safe
 
                 def _build_progress_text(done, total, ok, qn, success):
                     bar_len = 12
@@ -556,6 +553,7 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
             else:
                 await m.reply("❌ Failed to generate PDF. Please check logs.")
 
+        # ---- HTML ----
         if action in ("html", "set", "aiset"):
             if action in ("set", "aiset"):
                 await m.reply("⏳ **Ab HTML generate kar rahe hain...**")
@@ -606,6 +604,7 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
 # ──────────────────────────────────────────────────────────────────────
 
 async def process_notes_file(c: Client, m: Message, doc, _status_already_sent: bool = False) -> None:
+    """Any plain text file → notes-style PDF + notes-style HTML (no quiz)."""
     uid = m.from_user.id
     status = await m.reply("⏳ **Preparing notes...**")
     try:
@@ -615,13 +614,16 @@ async def process_notes_file(c: Client, m: Message, doc, _status_already_sent: b
 
         text = await _decode_bytes(raw)
         if text is None or not text.strip():
-            await status.edit_text("❌ File khaali hai ya decode nahi ho saki (encoding issue).")
+            await status.edit_text(
+                "❌ File khaali hai ya decode nahi ho saki (encoding issue)."
+            )
             return
 
         fname = _doc_fname(doc)
         base_name = _safe_stem(fname, fallback=f"notes_{uid}")
         clean_title = base_name.replace("_", " ").replace("-", " ").strip().title() or "Notes"
 
+        # ---- PDF ----
         await status.edit_text(f"⏳ **Generating notes PDF...**\n_(File: {fname or 'text'})_")
         pdf_path = os.path.join(tempfile.gettempdir(), f"notes_{uid}_{int(time.time())}.pdf")
         loop = asyncio.get_running_loop()
@@ -647,6 +649,7 @@ async def process_notes_file(c: Client, m: Message, doc, _status_already_sent: b
         else:
             await m.reply("❌ PDF generation failed. Check logs.")
 
+        # ---- HTML ----
         await status.edit_text("⏳ **Generating notes HTML...**")
         html_bytes, _fname_html = render_notes_html(text, clean_title)
         buf2 = BytesIO(html_bytes)
@@ -675,6 +678,7 @@ async def process_notes_file(c: Client, m: Message, doc, _status_already_sent: b
 
 
 async def txt2notes_cmd(c: Client, m: Message) -> None:
+    """/txt2notes — reply to any text file (or send after the command) → notes PDF + HTML."""
     uid = m.from_user.id
     if not await is_premium_user(uid):
         await m.reply("🔒 **Premium required** to use this feature: /pay")
@@ -690,12 +694,17 @@ async def txt2notes_cmd(c: Client, m: Message) -> None:
         fname = _doc_fname(doc)
         exts = (".txt", ".md", ".json", ".csv", ".log", ".text")
         if fname and not _allowed_ext(fname, exts):
-            await m.reply("⚠️ Sirf text files bhejein: `.txt`, `.md`, `.json`, `.csv`, `.log`")
+            await m.reply(
+                "⚠️ Sirf text files bhejein: `.txt`, `.md`, `.json`, `.csv`, `.log`"
+            )
             return
         await process_notes_file(c, m, doc)
     else:
         pending_txt_actions[uid] = "notes"
-        await m.reply("📁 **Please send the file now.**\n\n_(Koi bhi text file — structured notes, class notes, raw paragraphs — sab chalega)_")
+        await m.reply(
+            "📁 **Please send the file now.**\n\n"
+            "_(Koi bhi text file — structured notes, class notes, raw paragraphs — sab chalega)_"
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -726,244 +735,23 @@ async def _txt_cmd_common(c: Client, m: Message, action: str, pending_msg: str) 
 
 
 async def txt2pdf_cmd(c: Client, m: Message) -> None:
-    await _txt_cmd_common(c, m, "pdf", "📁 **Please send the `.txt` file now.**\n\n*(File ko normal message ki tarah bhej dein)*")
+    await _txt_cmd_common(c, m, "pdf",
+                          "📁 **Please send the `.txt` file now.**\n\n*(File ko normal message ki tarah bhej dein)*")
+
 
 async def txt2html_cmd(c: Client, m: Message) -> None:
-    await _txt_cmd_common(c, m, "html", "📁 **Please send the `.txt` file now.**\n\n*(File ko normal message ki tarah bhej dein)*")
+    await _txt_cmd_common(c, m, "html",
+                          "📁 **Please send the `.txt` file now.**\n\n*(File ko normal message ki tarah bhej dein)*")
+
 
 async def txt2set_cmd(c: Client, m: Message) -> None:
-    await _txt_cmd_common(c, m, "set", "📁 **Please send the `.txt` file now.**\n\n*(PDF aur HTML dono ek sath banenge)*")
+    await _txt_cmd_common(c, m, "set",
+                          "📁 **Please send the `.txt` file now.**\n\n*(PDF aur HTML dono ek sath banenge)*")
+
 
 async def aiset_cmd(c: Client, m: Message) -> None:
-    await _txt_cmd_common(c, m, "aiset", "📁 **Please send the `.txt` file now.**\n\n*(PDF aur HTML dono AI Solution ke sath banenge)*")
-
-
-# ──────────────────────────────────────────────────────────────────────
-# NEW: /txt command (2-Step Question & Answer Extraction)
-# ──────────────────────────────────────────────────────────────────────
-
-def _extract_mcqs_from_raw_text(text: str) -> list[dict]:
-    """Regex based parser to extract questions and options from raw text."""
-    text = text.replace('\r\n', '\n')
-    lines = text.split('\n')
-    questions = []
-    current_q = None
-    current_opts = []
-
-    q_regex = re.compile(r'^(?:Q\.?\s*)?(\d+)[\.\)]\s*(.*)')
-    opt_regex = re.compile(r'^(?:[\(\[]?([A-Da-d1-4])[\)\].]|\b([A-Da-d])\b)[\.\)]?\s*(.*)')
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        q_match = q_regex.match(line)
-        if q_match:
-            if current_q and len(current_opts) >= 2:
-                questions.append({"question": current_q, "options": current_opts})
-            current_q = q_match.group(2).strip()
-            current_opts = []
-            continue
-
-        opt_match = opt_regex.match(line)
-        if opt_match and current_q:
-            current_opts.append(opt_match.group(3).strip())
-            continue
-
-        if current_q:
-            if current_opts:
-                current_opts[-1] += " " + line
-            else:
-                current_q += " " + line
-
-    if current_q and len(current_opts) >= 2:
-        questions.append({"question": current_q, "options": current_opts})
-
-    return questions
-
-
-def _format_txt_output(questions: list[dict], answer_key: dict = None) -> str:
-    """Formats the questions into a text file. Adds ✅ ticks if answer_key is provided."""
-    out = []
-    for i, q in enumerate(questions, 1):
-        out.append(f"{i}. {q['question']}")
-        correct_opt = answer_key.get(i) if answer_key else None
-
-        for opt_idx, opt in enumerate(q['options']):
-            opt_letter = chr(65 + opt_idx)  # 0->A, 1->B, etc.
-            prefix = "✅ " if correct_opt and correct_opt == opt_letter else ""
-            out.append(f"{opt_letter}) {prefix}{opt}")
-        out.append("")
-    return "\n".join(out)
-
-
-@ratelimit("default")
-async def txt_cmd(c: Client, m: Message) -> None:
-    uid = m.from_user.id
-    if not await is_premium_user(uid):
-        await m.reply("🔒 **Premium required** to use this feature: /pay")
-        return
-
-    txt_step_state[uid] = "WAITING_SOURCE"
-    txt_step_data.pop(uid, None)
-    await m.reply(
-        "📥 **Send HTML/URL/PDF/JSON or any file containing questions.**\n\n"
-        "Main questions aur options nikaal kar ek `.txt` file bhejunga.\n"
-        "Uske baad aap Answer Key bhejenge."
-    )
-
-
-def txt_step_filter():
-    async def func(_, __, m: Message) -> bool:
-        return bool(m.from_user) and m.from_user.id in txt_step_state
-    return filters.create(func)
-
-
-async def handle_txt_step(c: Client, m: Message):
-    uid = m.from_user.id
-    state = txt_step_state.get(uid)
-    if not state:
-        return
-
-    if state == "WAITING_SOURCE":
-        status = await m.reply("⏳ **Processing your source...**")
-        text_content = ""
-
-        if m.text and m.text.startswith("http"):
-            url = m.text.strip()
-            try:
-                session = await get_session()
-                async with session.get(url, timeout=15) as resp:
-                    if resp.status != 200:
-                        await status.edit_text(f"❌ URL fetch failed (HTTP {resp.status})")
-                        return
-                    html = await resp.text()
-                
-                # Basic HTML stripping
-                html = re.sub(r'<style.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-                html = re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-                text_content = re.sub(r'<[^>]+>', ' ', html)
-                text_content = re.sub(r'\n\s*\n', '\n', text_content)
-            except Exception as e:
-                await status.edit_text(f"❌ URL Error: {e}")
-                return
-
-        elif m.document:
-            doc = m.document
-            try:
-                file_bytes = await c.download_media(doc.file_id, in_memory=True)
-                file_bytes.seek(0)
-                raw = file_bytes.read()
-                
-                fname = _doc_fname(doc).lower()
-                if fname.endswith(".pdf"):
-                    try:
-                        from PyPDF2 import PdfReader
-                        reader = PdfReader(BytesIO(raw))
-                        text_content = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-                    except ImportError:
-                        await status.edit_text("❌ PDF support requires `PyPDF2`. Please send .txt or .json instead.")
-                        return
-                    except Exception as e:
-                        await status.edit_text(f"❌ PDF read error: {e}")
-                        return
-                else:
-                    decoded = await _decode_bytes(raw)
-                    if decoded is None:
-                        await status.edit_text("❌ File decode nahi ho saki.")
-                        return
-                    text_content = decoded
-            except Exception as e:
-                await status.edit_text(f"❌ File error: {e}")
-                return
-        else:
-            await status.edit_text("⚠️ Kripya koi URL, PDF, ya Text file bhejein.")
-            return
-
-        questions = _extract_mcqs_from_raw_text(text_content)
-        if not questions:
-            await status.edit_text("❌ Koi valid Questions aur Options nahi mile. Format check karein.")
-            txt_step_state.pop(uid, None)
-            return
-
-        txt_step_data[uid] = questions
-        txt_step_state[uid] = "WAITING_KEY"
-
-        out_txt = _format_txt_output(questions)
-        buf = BytesIO(out_txt.encode('utf-8'))
-        buf.name = "questions_raw.txt"
-        
-        await m.reply_document(
-            document=buf,
-            file_name="questions_raw.txt",
-            caption=(
-                f"✅ **{len(questions)} Questions mile hain!**\n\n"
-                f"Yeh aapki pehli file hai (bina answer key ke).\n"
-                f"Ab kripya **Answer Key** bhejein (jaise: `1-A, 2-B, 3-C...` ya `.txt` file)."
-            )
-        )
-        try:
-            await status.delete()
-        except:
-            pass
-
-    elif state == "WAITING_KEY":
-        status = await m.reply("⏳ **Answer Key process kar rahe hain...**")
-        key_text = ""
-
-        if m.text:
-            key_text = m.text
-        elif m.document:
-            try:
-                file_bytes = await c.download_media(m.document.file_id, in_memory=True)
-                file_bytes.seek(0)
-                key_text = await _decode_bytes(file_bytes.read()) or ""
-            except Exception as e:
-                await status.edit_text(f"❌ Key file error: {e}")
-                return
-        else:
-            await status.edit_text("⚠️ Kripya Answer Key text ya `.txt` file mein bhejein.")
-            return
-
-        # Parse answer key (Matches: 1-A, 1.A, 1 A, 1:A)
-        answer_dict = {}
-        matches = re.findall(r'(\d+)\s*[-.:]?\s*([A-Da-d])', key_text)
-        for q_num, ans in matches:
-            answer_dict[int(q_num)] = ans.upper()
-
-        if not answer_dict:
-            await status.edit_text("❌ Answer Key format samajh nahi aaya. Kripya `1-A, 2-B` format mein bhejein.")
-            return
-
-        questions = txt_step_data.get(uid, [])
-        if not questions:
-            await status.edit_text("❌ Questions data missing. Kripya `/txt` se dobara shuru karein.")
-            txt_step_state.pop(uid, None)
-            return
-
-        final_txt = _format_txt_output(questions, answer_dict)
-        
-        buf = BytesIO(final_txt.encode('utf-8'))
-        buf.name = "questions_with_answers.txt"
-        
-        await m.reply_document(
-            document=buf,
-            file_name="questions_with_answers.txt",
-            caption=(
-                f"🎯 **Final File Ready!**\n\n"
-                f"Aapke **{len(answer_dict)}** answers ke hisaab se ✅ tick lag gaye hain.\n"
-                f"Aap is file ko `/txt2set` mein use karke PDF/HTML bana sakte hain."
-            )
-        )
-        
-        # Clear state
-        txt_step_state.pop(uid, None)
-        txt_step_data.pop(uid, None)
-        try:
-            await status.delete()
-        except:
-            pass
+    await _txt_cmd_common(c, m, "aiset",
+                          "📁 **Please send the `.txt` file now.**\n\n*(PDF aur HTML dono AI Solution ke sath banenge)*")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -971,7 +759,10 @@ async def handle_txt_step(c: Client, m: Message):
 # ──────────────────────────────────────────────────────────────────────
 
 async def _process_batch_after_delay(c: Client, m: Message, uid: int, action: str):
+    """Wait for all files in an album to arrive, then process them one by one."""
+    # 3 seconds wait karein taaki album ki saari files receive ho jayein
     await asyncio.sleep(3.0)
+
     files = batch_files.pop(uid, [])
     batch_tasks.pop(uid, None)
     pending_txt_actions.pop(uid, None)
@@ -979,11 +770,19 @@ async def _process_batch_after_delay(c: Client, m: Message, uid: int, action: st
     if not files:
         return
 
-    await c.send_message(chat_id=uid, text=f"📊 **Total {len(files)} files mili hain.**\nAb ek-ek karke PDF aur HTML banaye jayenge...\n")
+    # User ko batayein ki kitni files mili hain
+    await c.send_message(
+        chat_id=uid, 
+        text=f"📊 **Total {len(files)} files mili hain.**\nAb ek-ek karke PDF aur HTML banaye jayenge...\n"
+    )
     await asyncio.sleep(1)
 
     for idx, (doc, msg) in enumerate(files, 1):
-        status_msg = await c.send_message(chat_id=uid, text=f"▶️ **File {idx}/{len(files)} process ho rahi hai...**\n📁 `{_doc_fname(doc)}`")
+        # Har file ke liye ek status message banayein
+        status_msg = await c.send_message(
+            chat_id=uid, 
+            text=f"▶️ **File {idx}/{len(files)} process ho rahi hai...**\n📁 `{_doc_fname(doc)}`"
+        )
         
         try:
             if action == "notes":
@@ -994,11 +793,13 @@ async def _process_batch_after_delay(c: Client, m: Message, uid: int, action: st
             logger.error(f"Batch process error for file {idx}: {e}")
             await c.send_message(chat_id=uid, text=f"❌ File {idx} mein error aaya: {str(e)[:100]}")
         
+        # Status message ko delete karein
         try:
             await status_msg.delete()
         except Exception:
             pass
 
+        # Telegram FloodWait se bachne ke liye 2.5 second ka gap
         if idx < len(files):
             await asyncio.sleep(2.5)
 
@@ -1010,6 +811,7 @@ async def _process_batch_after_delay(c: Client, m: Message, uid: int, action: st
 def pending_txt_filter():
     async def func(_, __, m: Message) -> bool:
         return bool(m.from_user) and m.from_user.id in pending_txt_actions
+
     return filters.create(func)
 
 
@@ -1038,11 +840,15 @@ async def handle_pending_txt_file(c: Client, m: Message) -> None:
         )
         return
 
+    # --- BATCH LOGIC START ---
     if uid not in batch_files:
         batch_files[uid] = []
+        # 3 second ka timer shuru karein
         batch_tasks[uid] = asyncio.create_task(_process_batch_after_delay(c, m, uid, action))
 
+    # File aur message ko queue mein daalein
     batch_files[uid].append((doc, m))
+    # --- BATCH LOGIC END ---
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1058,10 +864,7 @@ def register(app: Client) -> None:
     app.on_message(filters.command("txt2html") & filters.private)(txt2html_cmd)
     app.on_message(filters.command("txt2set") & filters.private)(txt2set_cmd)
     app.on_message(filters.command("aiset") & filters.private)(aiset_cmd)
+    # NEW — any text → notes
     app.on_message(filters.command(["txt2notes", "notes"]) & filters.private)(txt2notes_cmd)
-    
-    # NEW: /txt command and its state handler
-    app.on_message(filters.command("txt") & filters.private)(txt_cmd)
-    app.on_message(filters.private & (filters.text | filters.document) & txt_step_filter())(handle_txt_step)
 
     app.on_message(filters.document & filters.private & pending_txt_filter())(handle_pending_txt_file)
