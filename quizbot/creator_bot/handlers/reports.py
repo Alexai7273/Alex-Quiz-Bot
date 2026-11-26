@@ -35,6 +35,10 @@ _TSR_LOCK = asyncio.Lock()
 # pending_txt_actions: uid -> "pdf" | "html" | "set" | "aiset" | "notes"
 pending_txt_actions = {}
 
+# NEW: Batch processing variables
+batch_files = {}  # uid -> list of (doc, message) tuples
+batch_tasks = {}  # uid -> asyncio.Task
+
 
 # ──────────────────────────────────────────────────────────────────────
 # helpers
@@ -407,7 +411,7 @@ async def testseries_cmd(c: Client, m: Message) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# /txt2pdf  /txt2html  /txt2set  /aiset — quiz format (with graceful fallback)
+# /txt2pdf  /txt2html  /txt2set  /aiset — quiz format
 # ──────────────────────────────────────────────────────────────────────
 
 async def process_txt_file(c: Client, m: Message, doc, action: str):
@@ -474,7 +478,6 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
                     now = time.time()
                     is_first = done == 1
                     is_last = done == total
-                    # Throttle: skip edits that fire too quickly (except first & last)
                     if not (is_first or is_last or (now - _throttle["last"] >= MIN_INTERVAL)):
                         return
                     _throttle["last"] = now
@@ -597,7 +600,7 @@ async def process_txt_file(c: Client, m: Message, doc, action: str):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# NEW: /txt2notes  — any txt → clean notes PDF + HTML
+# /txt2notes — any txt → clean notes PDF + HTML
 # ──────────────────────────────────────────────────────────────────────
 
 async def process_notes_file(c: Client, m: Message, doc, _status_already_sent: bool = False) -> None:
@@ -752,7 +755,57 @@ async def aiset_cmd(c: Client, m: Message) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Pending file handler — with bug fixes
+# NEW: Batch Processing Logic (Multiple Files at once)
+# ──────────────────────────────────────────────────────────────────────
+
+async def _process_batch_after_delay(c: Client, m: Message, uid: int, action: str):
+    """Wait for all files in an album to arrive, then process them one by one."""
+    # 3 seconds wait karein taaki album ki saari files receive ho jayein
+    await asyncio.sleep(3.0)
+
+    files = batch_files.pop(uid, [])
+    batch_tasks.pop(uid, None)
+    pending_txt_actions.pop(uid, None)
+
+    if not files:
+        return
+
+    # User ko batayein ki kitni files mili hain
+    await c.send_message(
+        chat_id=uid, 
+        text=f"📊 **Total {len(files)} files mili hain.**\nAb ek-ek karke PDF aur HTML banaye jayenge...\n"
+    )
+    await asyncio.sleep(1)
+
+    for idx, (doc, msg) in enumerate(files, 1):
+        # Har file ke liye ek status message banayein
+        status_msg = await c.send_message(
+            chat_id=uid, 
+            text=f"▶️ **File {idx}/{len(files)} process ho rahi hai...**\n📁 `{_doc_fname(doc)}`"
+        )
+        
+        try:
+            if action == "notes":
+                await process_notes_file(c, msg, doc)
+            else:
+                await process_txt_file(c, msg, doc, action)
+        except Exception as e:
+            logger.error(f"Batch process error for file {idx}: {e}")
+            await c.send_message(chat_id=uid, text=f"❌ File {idx} mein error aaya: {str(e)[:100]}")
+        
+        # Status message ko delete karein
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        # Telegram FloodWait se bachne ke liye 2.5 second ka gap
+        if idx < len(files):
+            await asyncio.sleep(2.5)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Pending file handler
 # ──────────────────────────────────────────────────────────────────────
 
 def pending_txt_filter():
@@ -779,7 +832,6 @@ async def handle_pending_txt_file(c: Client, m: Message) -> None:
         allowed = (".txt", ".json")
 
     if fname and not _allowed_ext(fname, allowed):
-        # FIX: always clear state so user isn't stuck forever
         pending_txt_actions.pop(uid, None)
         cmd_name = "txt2notes" if action == "notes" else f"txt2{action}"
         await m.reply(
@@ -788,13 +840,15 @@ async def handle_pending_txt_file(c: Client, m: Message) -> None:
         )
         return
 
-    # Clear state BEFORE processing so a failed processing doesn't leave user stuck
-    pending_txt_actions.pop(uid, None)
+    # --- BATCH LOGIC START ---
+    if uid not in batch_files:
+        batch_files[uid] = []
+        # 3 second ka timer shuru karein
+        batch_tasks[uid] = asyncio.create_task(_process_batch_after_delay(c, m, uid, action))
 
-    if action == "notes":
-        await process_notes_file(c, m, doc)
-    else:
-        await process_txt_file(c, m, doc, action)
+    # File aur message ko queue mein daalein
+    batch_files[uid].append((doc, m))
+    # --- BATCH LOGIC END ---
 
 
 # ──────────────────────────────────────────────────────────────────────
