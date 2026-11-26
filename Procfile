@@ -7,4 +7,3 @@
 # this one process -- required because a PaaS only routes traffic to the
 # port the web process binds ($PORT).
 web: python run.py
-web: uvicorn main:app --host=0.0.0.0 --port=${PORT}
